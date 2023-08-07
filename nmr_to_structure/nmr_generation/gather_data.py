@@ -1,13 +1,10 @@
-import pandas as pd
-from io import StringIO
-from typing import Tuple
 import os
-import lzma
-import gzip
-import json
-import pickle
+from io import StringIO
+from pathlib import Path
+from typing import Tuple
+
 import click
-import tqdm
+import pandas as pd
 from tqdm.contrib.concurrent import process_map
 
 
@@ -17,7 +14,7 @@ def process_spectrum(spectrum: str) -> dict:
 
 
 def parse_file_13C(args: Tuple[str, str]) -> Tuple[dict, bool]:
-    def process_peaks_13C(peaks: str) -> Tuple[dict, int]:
+    def process_peaks_13C(peaks: str) -> Tuple[str, int]:
         peak_df = pd.read_csv(StringIO(peaks), index_col=0)
         return peak_df.to_json(), len(peak_df[peak_df["delta (ppm)"] > -20])
 
@@ -26,8 +23,8 @@ def parse_file_13C(args: Tuple[str, str]) -> Tuple[dict, bool]:
         data = f.read()
     try:
         smiles, spectrum, peaks = data.split("##############\n")
-    except:
-        return None, False
+    except ValueError:
+        return dict(), False
 
     peak_dict, n_peaks = process_peaks_13C(peaks)
     spectrum_dict = process_spectrum(spectrum)
@@ -47,7 +44,7 @@ def parse_file_13C(args: Tuple[str, str]) -> Tuple[dict, bool]:
 
 
 def parse_file_1H(args: Tuple[str, str]) -> Tuple[dict, bool]:
-    def process_peaks_1H(peaks: str) -> Tuple[dict, int]:
+    def process_peaks_1H(peaks: str) -> str:
         peak_df = pd.read_csv(StringIO(peaks), index_col=0)
         return peak_df.to_json()
 
@@ -56,8 +53,8 @@ def parse_file_1H(args: Tuple[str, str]) -> Tuple[dict, bool]:
         data = f.read()
     try:
         smiles, spectrum, peaks = data.split("##############\n")
-    except:
-        return None, False
+    except ValueError:
+        return dict(), False
 
     peak_dict = process_peaks_1H(peaks)
     spectrum_dict = process_spectrum(spectrum)
@@ -73,14 +70,12 @@ def parse_file_1H(args: Tuple[str, str]) -> Tuple[dict, bool]:
 
 
 def parse_folder(
-    folder_path: str,
-    out_path: str,
-    file_names: str,
-    return_results: bool = False,
+    folder_path: Path,
+    out_path: Path,
+    file_name: str,
     sim_type: str = "1H",
 ) -> None:
     success = list()
-    to_redo = list()
 
     failure = 0
     total = 0
@@ -110,16 +105,13 @@ def parse_folder(
         )
 
     for result_dict, redo in parse_results:
-        if result_dict == None:
+        if len(result_dict) == 0 or redo:
             total += 1
             failure += 1
-            to_redo.append(result_dict)
-            continue
-        if redo:
-            to_redo.append(result_dict)
-        else:
-            success.append(result_dict)
 
+            continue
+
+        success.append(result_dict)
         total += 1
 
     print(
@@ -127,47 +119,44 @@ def parse_folder(
             total, failure, (total - failure) / total
         )
     )
-    print(
-        "Total: {}; Redo {} -> {:.4f}".format(total, len(to_redo), len(to_redo) / total)
-    )
 
-    to_redo_df = dict()
-    for entry in to_redo:
-        if entry == None:
-            continue
-        to_redo_df[entry["index"]] = entry["smiles"].strip()
-
-    to_redo_df = pd.DataFrame.from_dict(to_redo_df, orient="index", columns=["Smiles"])
-    to_redo_df.to_csv(os.path.join(out_path, f"redo_{file_names}.csv"))
-
-    if return_results:
-        return success
-    else:
-        for i in range(len(success) // 50000 + 1):
-            with lzma.open(
-                os.path.join(out_path, f"success_{file_names}_{i}.xz"), "wb"
-            ) as f:
-                pickle.dump(success[i * 50000 : (i + 1) * 50000], f)
+    results_df = pd.DataFrame(success)
+    results_df.to_pickle(out_path / file_name)
 
 
 @click.command()
-@click.option("--results_folder", required=True, help="Output folder", multiple=True)
-@click.option("--out_folder", required=True, help="Output folder")
-@click.option("--out_name", default=None, help="Output folder")
-@click.option("--sim_type", default="1H", help="Output folder")
-def main(results_folder: str, out_folder: str, out_name: str, sim_type: str):
-    if out_name == None:
+@click.option(
+    "--results_folder",
+    required=True,
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to a folder containing the output of a simulation.",
+    multiple=True,
+)
+@click.option(
+    "--out_folder",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Where to save the gathered data.",
+)
+@click.option(
+    "--out_name",
+    default=None,
+    help="Optional name for the dataframe produced by the script. Not applicable if data from more than one folder is gathered.",
+)
+@click.option(
+    "--sim_type",
+    type=click.Choice(["1H", "13C"]),
+    default="1H",
+    help="Simulation type.",
+)
+def main(results_folder: Tuple[Path], out_folder: Path, out_name: str, sim_type: str):
+    if out_name is None:
         out_name = results_folder[0]
+
     print(results_folder, len(results_folder), type(results_folder))
+
     if len(results_folder) > 1:
-        success = list()
         for folder in results_folder:
-            parse_folder(
-                folder, out_folder, folder, return_results=False, sim_type=sim_type
-            )
-
-        # with lzma.open(os.path.join(out_folder, 'success_all.xz'), "wb") as f:
-        #    pic
-
+            parse_folder(folder, out_folder, str(folder), sim_type=sim_type)
     else:
         parse_folder(results_folder[0], out_folder, out_name, sim_type=sim_type)

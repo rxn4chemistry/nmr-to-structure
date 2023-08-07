@@ -90,21 +90,25 @@ def make_nmr_set(
     "-m",
     type=click.Choice(["hnmr", "cnmr", "combined"]),
     required=True,
-    help="",
+    help="Which mode to use. Choose from either solely 1H, 13C NMR or both combined.",
 )
 @click.option(
     "--hnmr_mode",
     type=click.Choice(["range", "adaptive", "center"]),
     default="range",
-    help="",
+    help="How to format the 1H NMR peaks.",
 )
 @click.option(
     "--token_space",
     type=click.Choice(["shared", "separate"]),
     default="shared",
-    help="",
+    help="Wether the token space between the 1H and 13C NMR is shared or not.",
 )
-@click.option("--not_include_formula", is_flag=True, help="")
+@click.option(
+    "--not_include_formula",
+    is_flag=True,
+    help="Wether the formula is included with the NMR or not.",
+)
 @click.option("--augment", is_flag=True, help="")
 def main(
     nmr_data: Path,

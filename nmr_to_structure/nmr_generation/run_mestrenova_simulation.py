@@ -1,14 +1,15 @@
-import pandas as pd
-import subprocess
-import os
-import time
 import datetime
-import logging
-import click
-import pyautogui
-import psutil
 import getpass
+import logging
+import os
+import subprocess
+import time
 from pathlib import Path
+
+import click
+import pandas as pd
+import psutil
+import pyautogui
 
 # Orchestrate
 
@@ -50,7 +51,7 @@ def run_simulations(
     mnova_path: Path = Path("/Applications/MestReNova.app/Contents/MacOS/MestReNova"),
     script_path: Path = Path("/Users/arv/Projects/nmr/nmr_generation/scripts/"),
 ):
-    process = open_mnova(mnova_path)
+    open_mnova(mnova_path)
     for i in range(len(smiles_df)):
         smiles = smiles_df.iloc[i]["Smiles"]
         index = smiles_df.index[i]
@@ -93,7 +94,7 @@ def run_simulations(
                     f"Smiles: {smiles}, index: {index} timed out reopening MestreNova and skipping."
                 )
 
-                process = reopen_mnova(mnova_path)
+                reopen_mnova(mnova_path)
 
                 break
             time.sleep(0.5)
@@ -103,8 +104,15 @@ def run_simulations(
 
 
 @click.command()
-@click.option("--smiles_csv", type=click.Path(exists=True, path_type=Path), required=True, help="Input smiles csv")
-@click.option("--out_folder", type=click.Path(path_type=Path), required=True, help="Output folder")
+@click.option(
+    "--smiles_csv",
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help="Input smiles csv",
+)
+@click.option(
+    "--out_folder", type=click.Path(path_type=Path), required=True, help="Output folder"
+)
 @click.option(
     "--sim_type",
     default="1H",
@@ -145,7 +153,7 @@ def main(
     script_path: Path,
 ):
     smiles_data = pd.read_csv(smiles_csv, index_col=0)
-    if start_index != None:
+    if start_index is not None:
         smiles_data = smiles_data.loc[start_index:]
 
     os.makedirs(out_folder, exist_ok=True)
