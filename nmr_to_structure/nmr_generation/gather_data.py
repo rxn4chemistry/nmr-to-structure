@@ -71,10 +71,8 @@ def parse_file_1H(args: Tuple[str, str]) -> Tuple[dict, bool]:
 
 def parse_folder(
     folder_path: Path,
-    out_path: Path,
-    file_name: str,
     sim_type: str = "1H",
-) -> None:
+) -> pd.DataFrame:
     success = list()
 
     failure = 0
@@ -120,8 +118,14 @@ def parse_folder(
         )
     )
 
-    results_df = pd.DataFrame(success)
-    results_df.to_pickle(out_path / file_name)
+    # Format output dict to make it compatible with downstream tasks
+    sim_type_key = "1H_NMR_sim" if sim_type == "1H" else "13C_NMR_sim"
+    success_dict = {
+        out_dict.pop("smiles"): {sim_type_key: out_dict} for out_dict in success
+    }
+
+    results_df = pd.DataFrame.from_dict(success_dict, orient="index")
+    return results_df
 
 
 @click.command()
@@ -133,15 +137,16 @@ def parse_folder(
     multiple=True,
 )
 @click.option(
-    "--out_folder",
+    "--out_path",
     required=True,
     type=click.Path(path_type=Path),
     help="Where to save the gathered data.",
 )
 @click.option(
-    "--out_name",
+    "--add_to_existing_df",
     default=None,
-    help="Optional name for the dataframe produced by the script. Not applicable if data from more than one folder is gathered.",
+    type=click.Path(exists=True, path_type=Path),
+    help="Option to add the gathered data to another dataframe.",
 )
 @click.option(
     "--sim_type",
@@ -149,14 +154,26 @@ def parse_folder(
     default="1H",
     help="Simulation type.",
 )
-def main(results_folder: Tuple[Path], out_folder: Path, out_name: str, sim_type: str):
-    if out_name is None:
-        out_name = results_folder[0]
-
+def main(
+    results_folder: Tuple[Path], out_path: Path, add_to_existing_df: Path, sim_type: str
+):
     print(results_folder, len(results_folder), type(results_folder))
 
+    # Gather data
+    results_df = pd.DataFrame()
     if len(results_folder) > 1:
         for folder in results_folder:
-            parse_folder(folder, out_folder, str(folder), sim_type=sim_type)
+            out_df = parse_folder(folder, sim_type=sim_type)
+            results_df = (
+                out_df if results_df is None else pd.concat((results_df, out_df))
+            )
     else:
-        parse_folder(results_folder[0], out_folder, out_name, sim_type=sim_type)
+        results_df = parse_folder(results_folder[0], sim_type=sim_type)
+
+    # Save data
+    if add_to_existing_df is not None:
+        existing_df = pd.read_pickle(add_to_existing_df)
+        merged_df = existing_df.join(results_df, how="outer")
+        pd.to_pickle(merged_df, out_path)
+    else:
+        pd.to_pickle(results_df, out_path)

@@ -16,9 +16,7 @@ requirements = [
     "tqdm>=4.6.0",
     "opennmt-py>=3.0.3",
     "PyAutoGUI>=0.9.53",
-    "rxn-chem-utils>=1.1.4"
-
-   
+    "rxn-chem-utils>=1.1.4",
 ]
 
 test_requirements = []
@@ -39,12 +37,10 @@ setup(
         "console_scripts": [
             "run_simulation=nmr_to_structure.nmr_generation.run_mestrenova_simulation:main",
             "gather_data=nmr_to_structure.nmr_generation.gather_data:main",
-
             "prepare_nmr_input=nmr_to_structure.prepare_input.prepare_nmr_input:main",
             "prepare_nmr_rxn_input=nmr_to_structure.prepare_input.prepare_nmr_rxn_input:main",
-
             "train_model=nmr_to_structure.training.run_training:main",
-            "score_model=nmr_to_structure.training.score:main"
+            "score_model=nmr_to_structure.training.score:main",
         ],
     },
     install_requires=requirements,

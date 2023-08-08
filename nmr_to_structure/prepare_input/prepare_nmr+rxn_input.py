@@ -5,7 +5,8 @@ import pandas as pd
 from rxn.chemutils.tokenization import tokenize_smiles
 from tqdm.auto import tqdm
 
-from .nmr_utils import build_cnmr_string, build_hnmr_string, save_set, split_data
+from .nmr_utils import (build_cnmr_string, build_hnmr_string, save_set,
+                        split_data)
 
 
 def make_nmr_rxn_set(

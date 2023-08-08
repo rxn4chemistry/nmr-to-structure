@@ -140,7 +140,9 @@ def run_simulations(
 @click.option(
     "--script_path",
     type=click.Path(exists=True, path_type=Path),
-    default=Path("/home/vnc1/Projects/NMR_gen_mestre_nova/scripts"),
+    default=Path(
+        "~/Projects/nmr-to-structure/nmr_to_structure/nmr_generation/mestre_nova_scripts"
+    ),
     help="Path to folder containing the 1H and 13C prediction scripts.",
 )
 def main(
