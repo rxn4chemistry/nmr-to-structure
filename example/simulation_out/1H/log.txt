@@ -1,0 +1,1 @@
+19:58:52,406 root INFO Opening MestreNova
