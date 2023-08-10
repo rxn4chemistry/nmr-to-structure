@@ -4,8 +4,7 @@ import click
 import pandas as pd
 from tqdm.auto import tqdm
 
-from .nmr_utils import (build_cnmr_string, build_hnmr_string, save_set,
-                        split_data)
+from .nmr_utils import build_cnmr_string, build_hnmr_string, save_set, split_data
 
 
 def make_nmr_set(

@@ -179,8 +179,8 @@ def build_cnmr_string(
     return nmr_strings
 
 
-def save_set(set: pd.DataFrame, out_path: Path, set_type: str) -> None:
-    smiles = list(set.smiles)
+def save_set(data_set: pd.DataFrame, out_path: Path, set_type: str) -> None:
+    smiles = list(data_set.smiles)
     smiles = [tokenize_smiles(smile) for smile in smiles]
 
     os.makedirs(out_path, exist_ok=True)
@@ -189,7 +189,7 @@ def save_set(set: pd.DataFrame, out_path: Path, set_type: str) -> None:
         for item in smiles:
             f.write(f"{item}\n")
 
-    nmr_input = set.nmr_input
+    nmr_input = data_set.nmr_input
     with open(out_path / f"src-{set_type}.txt", "w") as f:
         for item in nmr_input:
             f.write(f"{item}\n")
