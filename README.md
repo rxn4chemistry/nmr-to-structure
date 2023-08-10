@@ -15,7 +15,13 @@ conda activate nmr
 Clone the repository and instal via: 
 
 ```
-pip install -e .
+pip install .
+```
+
+For development install via:
+
+```
+pip install -e .[dev]
 ```
 
 ## Simulating NMR spectra
@@ -24,7 +30,7 @@ This section explains how to simulate NMR spectra using MestreNova. A working ve
 
 ### Running the simulations
 
-Running the MestreNova script requires a .csv file containing SMILES of the molecules for which NMR spectra will be generated. This .csv file requires two columns, 'Smiles' and ... An 'example.csv' is provided. To run the simulations run the following script:
+Running the MestreNova script requires a .csv file containing SMILES of the molecules for which NMR spectra will be generated. This .csv file requires one columns, `Smiles`. The index of the smiles is used to name the output files. An 'example.csv' is provided. To run the simulations run the following script:
 
 ```
 run_simulation --smiles_csv example/smiles.csv --out_folder example/simulation_out/1H --sim_type 1H --mnova_path <Absolute Path to your MestreNova executable> --script_path <Absolute path to the folder containing the MestreNova scripts>
@@ -54,13 +60,18 @@ The following scripts will use the data generated in the previous steps, format 
 This script can be used to prepare training data for a model that predicts the structure from the NMR. Using the data from above, training data can be prepared as such:
 
 ```
-gather_data --nmr_data example/simulation_out/results.pkl --out_path example/training/1H --mode hnmr
+prepare_nmr_input --nmr_data example/simulation_out/results.pkl --out_path example/training/1H --mode hnmr
 ```
 The above command will prepare training data for a model that predicts the structure solely from a <sup>1</sup>H NMR. Further options are available as described in the paper.
 
 ### Task 2: Reaction data + NMR to Structure
 
-The following script prepares training data for the second task of predicting the correct molecule from a set given the NMR spectrum. 
+The following script prepares training data for the second task of predicting the correct molecule from a set given the NMR spectrum. Additionally, a file containg reactions from which to build the molecule sets is required. The script expects this file to be a pickled dataframe of one column  Use the following syntax to run the script:
+
+```
+prepare_nmr_rxn_input --nmr_data example/simulation_out/results.pkl --rxn_data <path to Reaction file> --out_path example/training/1H --mode hnmr
+```
+
 
 ## Training a model
 
@@ -74,7 +85,7 @@ Note: The template expects a GPU to be present and to run a real training much m
 
 For testing purposes, training a model for only few steps with a tiny model on CPU only:
 ```
-train_model --template_path src/nmr_to_structure/training/transformer_template_tiny_cpu.yaml --data_folder example/train
+train_model --template_path src/nmr_to_structure/training/transformer_template_tiny_cpu.yaml --data_folder example/training/1H
 ```
 ## Inference
 Run the following command to do inference:
@@ -84,7 +95,7 @@ onmt_translate -model <model_path> -src <src_path> -output <out_file> -beam_size
 For the example (dummy model, valid set, CPU only), this corresponds to the following:
 
 ```
-onmt_translate -model example/train/model_step_5.pt -src example/train/data/src-val.txt -output example/train/pred-val.txt -beam_size 10 -n_best 10 -min_length 5
+onmt_translate -model example/training/1H/model_step_5.pt -src example/training/1H/data/src-val.txt -output example/training/1H/pred-val.txt -beam_size 10 -n_best 10 -min_length 5
 ```
 
 ## Scoring
@@ -97,7 +108,7 @@ python scripts/score.py --tgt_path <path to tgt file> --inference_path <out file
 For the example above:
 
 ```
-score_model --tgt_path examples/train/data/tgt-val.txt --inference_path examples/train/pred-val.txt
+score_model --tgt_path example/training/1H/data/tgt-val.txt --inference_path example/training/1H/pred-val.txt
 ```
 
 Use --n_beams if the beam size is changed from 10 during inference.
