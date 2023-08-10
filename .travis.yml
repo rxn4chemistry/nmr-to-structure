@@ -18,4 +18,85 @@ script:
   - python -m isort --profile black --check --diff .
   - python -m flake8 .
   # static typing
-  - python -m mypy .
+  - python -m mypy src
+
+jobs:
+  include:
+    - python: 3.8 # in case of single test job we add it here
+    - stage: PyPI release
+      if: tag =~ ^v
+      python: 3.8
+      install: skip
+      script:
+        # prevent overwriting of existing versions in artifactory
+        - export PACKAGE_VERSION=$(python setup.py --version)
+        - export PACKAGE_NAME=$(python setup.py --name)
+        - index_versions_output=$(docker run --rm -it python:3-alpine3.14 pip index versions --index-url https://${PYPI_USERNAME}:${PYPI_PASSWORD}@${PYPI_SERVER}/simple ${PACKAGE_NAME})
+        - echo "$index_versions_output"
+        - |
+          if [[ "${TRAVIS_TAG}" != "v${PACKAGE_VERSION}" ]]; then
+            echo "The tag version doesn't correspond to the package version. Take care that they match.";
+            travis_terminate 1;
+          fi
+        - |
+          if echo "$index_versions_output, " | grep -q "${PACKAGE_VERSION}, "; then
+            echo "Local version ${PACKAGE_VERSION} exists already on the index server!";
+            echo "This means the tag was either moved by force or the pypi package was pushed manually.";
+            travis_terminate 1;
+          fi
+      deploy:
+        - provider: pypi
+          server: https://${PYPI_SERVER}
+          distributions: "sdist bdist_wheel"
+          username: ${PYPI_USERNAME}
+          password: ${PYPI_PASSWORD}
+          setuptools_version: "60.8.2"
+          on:
+            tags: true
+    - stage: Bump version
+      branches:
+        only:
+          - main
+      # issues with travis-conditions and commit_message, so we check ourselves in before_install instead of using "if:"
+      python: 3.9
+      before_install:
+        # reading part from first occurrence of [bump minor] with some whitespace allowed
+        - |
+          if [[ $TRAVIS_COMMIT_MESSAGE =~ \[[[:space:]]*bump[[:space:]]*([[:alnum:]]*)[[:space:]]*\] ]]; then
+            export PART=${BASH_REMATCH[1]};
+            echo "Parsed from commit message bump2version part: ${PART}";
+          else
+            echo "Did not match regex in commit message, terminating job as success.";
+            echo "TRAVIS_COMMIT_MESSAGE was ${TRAVIS_COMMIT_MESSAGE}";
+            travis_terminate 0;
+          fi
+      install:
+        - pip install bump2version==1.0.1
+        # set repo so we can push commits to "origin-push"
+        - git remote add -f origin-push https://${GHE_TOKEN}@github.ibm.com/${TRAVIS_REPO_SLUG}.git
+        - DEFAULT_BRANCH=$(git remote show origin-push | grep 'HEAD branch' | cut -d' ' -f5)
+        - git branch -a
+        - git checkout ${DEFAULT_BRANCH}
+        - git pull
+        - |
+          if [[ $TRAVIS_COMMIT != $(git log -n 1 --pretty=format:"%H") ]]; then
+            echo "The original commit triggering this travis build is not the newest commit on the default branch.";
+            # nightly tests failing here should exclude this job number
+            travis_terminate 1;
+          fi
+        - git config user.email "${PYPI_USERNAME}"
+        - git config user.name "Travis CI Bump version"
+      script:
+        # reading part from first occurrence of [bump minor] with some whitespace allowed
+        # - export PART=$(echo ${TRAVIS_COMMIT_MESSAGE} | grep -oP "\[\s*bump\s*\K(\w*)(?=\s*\])" | head -1)
+        - export ADDED_MESSAGE="via TravisCI (${TRAVIS_JOB_NUMBER}) from ${TRAVIS_COMMIT:0:7}"
+        - bump2version "${PART}" --tag --tag-message "Release {new_version} ${ADDED_MESSAGE}" --commit --message "Bump version {current_version} → {new_version} ${ADDED_MESSAGE}"
+        - git log
+      deploy:
+        skip_cleanup: true
+        provider: script
+        script: >-
+          echo "Pushing commit and tag created with bump2version. The tag should trigger another build executing the PyPI release stage." &&
+          git push origin-push --follow-tags
+        on:
+          branch: main
