@@ -15,7 +15,7 @@ install:
 script:
   # style enforcement
   - python -m black --check --diff --color .
-  - python -m isort --check --diff .
+  - python -m isort --profile black --check --diff .
   - python -m flake8 .
   # static typing
   - python -m mypy .
