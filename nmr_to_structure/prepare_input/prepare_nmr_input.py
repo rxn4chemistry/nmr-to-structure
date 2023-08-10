@@ -21,7 +21,7 @@ def make_nmr_set(
         nmr_strings = list()
         if mode == "combined":
             h_nmr_strings = build_hnmr_string(
-                smiles=nmr_set.index[i],
+                smiles=str(nmr_set.index[i]),
                 peak_dict=nmr_set.iloc[i]["1H_NMR_sim"]["peaks"],
                 mode=hnmr_mode,
                 header=not not_include_formula,
@@ -42,7 +42,7 @@ def make_nmr_set(
 
         elif mode == "hnmr":
             nmr_strings = build_hnmr_string(
-                smiles=nmr_set.index[i],
+                smiles=str(nmr_set.index[i]),
                 peak_dict=nmr_set.iloc[i]["1H_NMR_sim"]["peaks"],
                 mode=hnmr_mode,
                 header=not not_include_formula,
@@ -53,7 +53,7 @@ def make_nmr_set(
         elif mode == "cnmr":
             nmr_strings = build_cnmr_string(
                 nmr_set.iloc[i]["13C_NMR_sim"],
-                smiles=nmr_set.index[i],
+                smiles=str(nmr_set.index[i]),
                 header=not not_include_formula,
                 token_space=token_space,
                 n_aug=n_aug,
