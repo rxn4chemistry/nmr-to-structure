@@ -5,11 +5,12 @@ from functools import partial
 from multiprocessing import Manager, Process
 from pathlib import Path
 from typing import List
+import os
 
 import click
 import pandas as pd
-from nmr_utils import (
-    RANDOM_SEED,
+from nmr_to_structure.prepare_input.nmr_utils import (
+    DEFAULT_SEED,
     log_file_name_from_time,
     make_nmr,
     save_set,
@@ -20,12 +21,12 @@ from rxn.chemutils.tokenization import tokenize_smiles
 from rxn.utilities.logging import setup_console_and_file_logger
 from tqdm.auto import tqdm
 
-DEFAULT_NON_MATCHING_TOKEN = "<no_match>"
+DEFAULT_NON_MATCHING_TOKEN = "<no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match>"
 DEFAULT_TEST_SIZE = 0.1
 DEFAULT_VAL_SIZE = 0.05
 DEFAULT_MAX_SEQ_LEN = 600
 
-random.seed(RANDOM_SEED)
+random.seed(DEFAULT_SEED)
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -318,6 +319,9 @@ def main(
     token_space: str = "shared",
     non_matching: bool = True,
 ):
+    if not out_path.exists():
+        os.makedirs(out_path)
+
     logfile = out_path / log_file_name_from_time("nmr_matching_preprocess")
     setup_console_and_file_logger(logfile)
 
@@ -439,14 +443,18 @@ def main(
 
     # Concatenate training and validation set
     combined_train_set = pd.concat((rxn_train, mol_train, tanimoto_train))
+    combined_train_set = combined_train_set.sample(frac=1, random_state=DEFAULT_SEED)
     combined_val_set = pd.concat((rxn_val, mol_val, tanimoto_val))
+    combined_val_set = combined_val_set.sample(frac=1, random_state=DEFAULT_SEED)
 
     # Save training data
     logging.info("Saving data.")
     save_set(combined_train_set, out_path, "train")
 
     # Save validation data
-    save_set(combined_val_set, out_path, "val")
+    combined_val_set_small = combined_val_set.sample(n=10000, random_state=DEFAULT_SEED)
+    save_set(combined_val_set_small, out_path, "val")
+    save_set(combined_val_set, out_path, "val-big")
 
     # Save test data
     save_set(rxn_test, out_path, "test-rxn")

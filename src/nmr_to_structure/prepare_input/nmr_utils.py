@@ -12,7 +12,7 @@ from rdkit.Chem import AllChem, rdMolDescriptors
 from rxn.chemutils.tokenization import tokenize_smiles
 from sklearn.model_selection import train_test_split
 
-RANDOM_SEED = 3246
+DEFAULT_SEED = 3246
 DEFAULT_NON_MATCHING_TOKEN = "<no_match>"
 
 
@@ -30,10 +30,10 @@ def split_data(
     input_data: Any, test_size: float = 0.1, val_size: float = 0.05
 ) -> Tuple[Any, Any, Any]:
     train_data, test_data = train_test_split(
-        input_data, test_size=test_size, random_state=RANDOM_SEED
+        input_data, test_size=test_size, random_state=DEFAULT_SEED
     )
     train_data, val_data = train_test_split(
-        train_data, test_size=val_size, random_state=RANDOM_SEED
+        train_data, test_size=val_size, random_state=DEFAULT_SEED
     )
 
     return (train_data, test_data, val_data)
