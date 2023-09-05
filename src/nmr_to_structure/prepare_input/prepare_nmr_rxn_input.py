@@ -15,6 +15,7 @@ from tqdm.auto import tqdm
 
 from nmr_to_structure.prepare_input.nmr_utils import (
     DEFAULT_SEED,
+    DEFAULT_NON_MATCHING_TOKEN,
     evaluate_molecule,
     log_file_name_from_time,
     make_nmr,
@@ -23,7 +24,6 @@ from nmr_to_structure.prepare_input.nmr_utils import (
     tanimoto_set_worker,
 )
 
-DEFAULT_NON_MATCHING_TOKEN = "<no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match>"
 DEFAULT_TEST_SIZE = 0.1
 DEFAULT_VAL_SIZE = 0.05
 DEFAULT_MAX_SEQ_LEN = 600
@@ -337,7 +337,7 @@ def main(
     # Load dataframe containing nmr data
     logger.info("Reading data.")
     nmr_df = pd.read_pickle(nmr_data)
-    nmr_df.drop(columns=["1H_NMR_exp", "13C_NMR_exp"], inplace=True)
+    #nmr_df.drop(columns=["1H_NMR_exp", "13C_NMR_exp"], inplace=True)
     nmr_df.dropna(inplace=True)
 
     # Split into train, test, val
@@ -461,7 +461,7 @@ def main(
     save_set(combined_train_set, out_path, "train")
 
     # Save validation data
-    combined_val_set_small = combined_val_set.sample(n=10000, random_state=DEFAULT_SEED)
+    combined_val_set_small = combined_val_set.sample(n=min(10000, len(combined_val_set)), random_state=DEFAULT_SEED)
     save_set(combined_val_set_small, out_path, "val")
     save_set(combined_val_set, out_path, "val-big")
 

@@ -10,10 +10,11 @@ import regex as re
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem, rdMolDescriptors
 from rxn.chemutils.tokenization import tokenize_smiles
+from rdkit import RDLogger
 from sklearn.model_selection import train_test_split
 
 DEFAULT_SEED = 3246
-DEFAULT_NON_MATCHING_TOKEN = "<no_match>"
+DEFAULT_NON_MATCHING_TOKEN = "<no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match>"
 DEFAULT_ALLOWED_ELEMENTS = set(["C", "H", "N", "O", "S", "P", "F", "Cl", "Br", "I"])
 
 
@@ -41,6 +42,7 @@ def split_data(
 
 
 def evaluate_molecule(smiles: str) -> bool:
+    RDLogger.DisableLog('rdApp.*')
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return False
