@@ -1,25 +1,27 @@
 import logging
+import os
 import random
 import time
 from functools import partial
 from multiprocessing import Manager, Process
 from pathlib import Path
 from typing import List
-import os
 
 import click
 import pandas as pd
+from rxn.chemutils.tokenization import tokenize_smiles
+from rxn.utilities.logging import setup_console_and_file_logger
+from tqdm.auto import tqdm
+
 from nmr_to_structure.prepare_input.nmr_utils import (
     DEFAULT_SEED,
+    evaluate_molecule,
     log_file_name_from_time,
     make_nmr,
     save_set,
     split_data,
     tanimoto_set_worker,
 )
-from rxn.chemutils.tokenization import tokenize_smiles
-from rxn.utilities.logging import setup_console_and_file_logger
-from tqdm.auto import tqdm
 
 DEFAULT_NON_MATCHING_TOKEN = "<no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match>"
 DEFAULT_TEST_SIZE = 0.1
@@ -125,9 +127,16 @@ def make_nmr_rxn_set(
         components = rxn.split(".")
         components = list(filter(None, components))
 
-        components_tokenized = tokenize_smiles(".".join(components))
+        allowed_mask = [evaluate_molecule(smiles) for smiles in components]
+        allowed_components = [
+            components[i]
+            for i in range(len(allowed_mask))
+            if allowed_mask[i] and len(components[i]) > 5
+        ]
 
-        for component in components:
+        components_tokenized = tokenize_smiles(".".join(allowed_components))
+
+        for component in allowed_components:
             if component not in mols or len(component) < 5:
                 continue
 

@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 
 DEFAULT_SEED = 3246
 DEFAULT_NON_MATCHING_TOKEN = "<no_match>"
+DEFAULT_ALLOWED_ELEMENTS = set(["C", "H", "N", "O", "S", "P", "F", "Cl", "Br", "I"])
 
 
 # General Utilities #
@@ -37,6 +38,18 @@ def split_data(
     )
 
     return (train_data, test_data, val_data)
+
+
+def evaluate_molecule(smiles: str) -> bool:
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return False
+
+    formula = rdMolDescriptors.CalcMolFormula(mol)
+    atoms = re.findall(r"[A-Z][a-z]*\d*", formula)
+    atoms_clean = set([re.sub(r"\d+", "", atom) for atom in atoms])
+
+    return atoms_clean.issubset(DEFAULT_ALLOWED_ELEMENTS) and len(atoms) > 1
 
 
 def save_set(data_set: pd.DataFrame, out_path: Path, set_type: str) -> None:
