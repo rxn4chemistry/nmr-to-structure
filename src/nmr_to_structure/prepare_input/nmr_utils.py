@@ -1,44 +1,98 @@
+import datetime
 import os
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, KeysView, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import regex as re
-from rdkit import Chem
-from rdkit.Chem import rdMolDescriptors
+from rdkit import Chem, DataStructs
+from rdkit.Chem import AllChem, rdMolDescriptors
 from rxn.chemutils.tokenization import tokenize_smiles
+from rdkit import RDLogger
 from sklearn.model_selection import train_test_split
 
-RANDOM_SEED = 3246
+DEFAULT_SEED = 3246
+DEFAULT_NON_MATCHING_TOKEN = "<no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match> <no_match>"
+DEFAULT_ALLOWED_ELEMENTS = set(["C", "H", "N", "O", "S", "P", "F", "Cl", "Br", "I"])
 
 
+# General Utilities #
 def tokenize_formula(formula: str) -> list:
     return re.findall("[A-Z][a-z]?|\d+|.", formula)
 
 
-def jitter(value, jitter_range: float = 2):
+def jitter(value: float, jitter_range: float = 2) -> float:
     jitter_value = np.random.uniform(-jitter_range, +jitter_range)
     return value + jitter_value
 
 
-def split_data(input_data: Any) -> Tuple[Any, Any, Any]:
+def split_data(
+    input_data: Any, test_size: float = 0.1, val_size: float = 0.05
+) -> Tuple[Any, Any, Any]:
     train_data, test_data = train_test_split(
-        input_data, test_size=0.1, random_state=RANDOM_SEED
+        input_data, test_size=test_size, random_state=DEFAULT_SEED
     )
     train_data, val_data = train_test_split(
-        train_data, test_size=0.05, random_state=RANDOM_SEED
+        train_data, test_size=val_size, random_state=DEFAULT_SEED
     )
 
     return (train_data, test_data, val_data)
 
 
+def evaluate_molecule(smiles: str) -> bool:
+    RDLogger.DisableLog('rdApp.*')
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return False
+
+    formula = rdMolDescriptors.CalcMolFormula(mol)
+    atoms = re.findall(r"[A-Z][a-z]*\d*", formula)
+    atoms_clean = set([re.sub(r"\d+", "", atom) for atom in atoms])
+
+    return atoms_clean.issubset(DEFAULT_ALLOWED_ELEMENTS) and len(atoms) > 1
+
+
+def save_set(data_set: pd.DataFrame, out_path: Path, set_type: str) -> None:
+    os.makedirs(out_path, exist_ok=True)
+
+    smiles = list(data_set.smiles)
+    with open(out_path / f"tgt-{set_type}.txt", "w") as f:
+        for item in smiles:
+            f.write(f"{item}\n")
+
+    nmr_input = data_set.nmr_input
+    with open(out_path / f"src-{set_type}.txt", "w") as f:
+        for item in nmr_input:
+            f.write(f"{item}\n")
+
+
+# Copied from github.com/rxn4chemistry/rxn-onmt-models/blob/main/src/rxn/onmt_models/utils.py
+def log_file_name_from_time(prefix: Optional[str] = None) -> str:
+    """
+    Get the name of a log file (typically to create it) from the current
+    date and time.
+
+    Returns:
+        String for a file name in the format "20221231-1425.log", or
+        "{prefix}-20221231-1425.log" if the prefix is specified.
+    """
+    now = datetime.datetime.now()
+    now_formatted = now.strftime("%Y%m%d-%H%M")
+    if prefix is None:
+        return now_formatted + ".log"
+    else:
+        return prefix + "-" + now_formatted + ".log"
+
+
+# Functions for making NMR strings #
 def build_1H_peak(
-    HNMR_sim_peaks,
-    peak,
+    HNMR_sim_peaks: dict,
+    peak: str,
     jitter_peaks: bool = False,
-    mode="adaptive",
-    token_space="separate",
+    mode: str = "adaptive",
+    token_space: str = "separate",
 ) -> Tuple[float, str]:
     if (
         HNMR_sim_peaks[peak]["rangeMax"] - HNMR_sim_peaks[peak]["rangeMin"] > 0.15
@@ -179,17 +233,215 @@ def build_cnmr_string(
     return nmr_strings
 
 
-def save_set(data_set: pd.DataFrame, out_path: Path, set_type: str) -> None:
-    smiles = list(data_set.smiles)
-    smiles = [tokenize_smiles(smile) for smile in smiles]
+def make_nmr(
+    mode: str,
+    component: str,
+    hnmr: Optional[dict] = None,
+    cnmr: Optional[dict] = None,
+    hnmr_mode: str = "range",
+    token_space: str = "shared",
+) -> str:
+    if mode == "combined":
+        if hnmr is None or cnmr is None:
+            raise ValueError("For mode combined both hnmr and cnmr have to be defined.")
 
-    os.makedirs(out_path, exist_ok=True)
+        hnmr_string = build_hnmr_string(
+            smiles=component,
+            peak_dict=hnmr,
+            mode=hnmr_mode,
+            header=False,
+            token_space=token_space,
+        )[0]
 
-    with open(out_path / f"tgt-{set_type}.txt", "w") as f:
-        for item in smiles:
-            f.write(f"{item}\n")
+        cnmr_string = build_cnmr_string(
+            cnmr,
+            header=False,
+            token_space=token_space,
+        )[0]
 
-    nmr_input = data_set.nmr_input
-    with open(out_path / f"src-{set_type}.txt", "w") as f:
-        for item in nmr_input:
-            f.write(f"{item}\n")
+        nmr_string = " {} {}".format(hnmr_string.strip(), cnmr_string)
+
+    elif mode == "hnmr":
+        if hnmr is None:
+            raise ValueError("For mode hnmr hnmr can't be None.")
+
+        hnmr_string = build_hnmr_string(
+            smiles=component,
+            peak_dict=hnmr,
+            mode=hnmr_mode,
+            header=False,
+            token_space=token_space,
+        )[0]
+
+        nmr_string = " " + hnmr_string
+
+    elif mode == "cnmr":
+        if cnmr is None:
+            raise ValueError("For mode cnmr cnmr can't be None.")
+
+        cnmr_string = build_cnmr_string(
+            cnmr,
+            header=False,
+            token_space=token_space,
+        )[0]
+        nmr_string = " " + cnmr_string
+
+    return nmr_string
+
+
+# Functions and classes supporting the generation of Tanimoto sets #
+class TanimotoContainer:
+    def __init__(self, n_tanimoto_bins: int) -> None:
+        tanimoto_boxes = np.linspace(0, 1, n_tanimoto_bins + 1)
+
+        self.length = 0
+        self.tanimoto_results_container: Dict[str, list] = {
+            "{:.3f}".format(tanimoto_boxes[i]): list() for i in range(n_tanimoto_bins)
+        }
+
+    def add(self, to_add_dict: Dict) -> None:
+        for key in to_add_dict:
+            self.tanimoto_results_container[key].extend(to_add_dict[key])
+            self.length += len(to_add_dict[key])
+
+    def __len__(self) -> int:
+        return self.length
+
+    def __getitem__(self, key: str) -> List:
+        return self.tanimoto_results_container[key]
+
+    def get_keys(self) -> KeysView:
+        return self.tanimoto_results_container.keys()
+
+    def to_dataframe(self) -> pd.DataFrame:
+        results_combined = list()
+
+        for key in self.tanimoto_results_container:
+            for sample in self.tanimoto_results_container[key]:
+                sample["tanimoto_bin"] = key
+            results_combined.extend(self.tanimoto_results_container[key])
+
+        return pd.DataFrame(results_combined)
+
+
+@lru_cache(maxsize=5000000)
+def calculate_fingerprint(smiles: str) -> DataStructs.cDataStructs.ExplicitBitVect:
+    mol = Chem.MolFromSmiles(smiles)
+    mol_fp = AllChem.GetMorganFingerprintAsBitVect(
+        mol, useChirality=True, radius=2, nBits=1024
+    )
+    return mol_fp
+
+
+def calculate_tanimoto(smiles1: str, smiles2: str) -> float:
+    smiles1_fp, smiles2_fp = calculate_fingerprint(smiles1), calculate_fingerprint(
+        smiles2
+    )
+
+    return DataStructs.FingerprintSimilarity(smiles1_fp, smiles2_fp)
+
+
+def get_tanimoto_set(
+    tgt_smiles: str,
+    nmr_df: pd.DataFrame,
+    mode: str,
+    hnmr_mode: str,
+    token_space: str,
+    non_matching: bool,
+    n_tanimoto_bins: int,
+) -> Dict[str, list]:
+    """Creates tanimoto sets for a single molecule."""
+
+    similarities = list()
+    for smiles in nmr_df.index:
+        similarities.append(calculate_tanimoto(tgt_smiles, smiles))
+
+    similarities_np = np.array(similarities)
+
+    nmr = make_nmr(
+        mode,
+        tgt_smiles,
+        hnmr=nmr_df.loc[tgt_smiles]["1H_NMR_sim"]["peaks"],
+        cnmr=nmr_df.loc[tgt_smiles]["13C_NMR_sim"],
+        hnmr_mode=hnmr_mode,
+        token_space=token_space,
+    )
+
+    tanimoto_boxes = np.linspace(0, 1, n_tanimoto_bins + 1)
+
+    src_tgt_pairs: Dict[str, list] = {
+        "{:.3f}".format(tanimoto_boxes[i]): list() for i in range(n_tanimoto_bins)
+    }
+    for i in range(len(tanimoto_boxes) - 1):
+        sim_smiles = nmr_df.index[
+            np.logical_and(
+                similarities_np >= tanimoto_boxes[i],
+                similarities_np < tanimoto_boxes[i + 1],
+            )
+        ]
+
+        # If smaller than 4 can't constuct proper sets
+        if len(sim_smiles) < 4:
+            continue
+
+        # Matching set
+        selected_smiles = [tgt_smiles] + np.random.choice(sim_smiles, 3, replace=False)
+
+        nmr_input = tokenize_smiles(".".join(selected_smiles)) + nmr
+        src_tgt_pairs["{:.3f}".format(tanimoto_boxes[i])].append(
+            {"nmr_input": nmr_input, "smiles": tokenize_smiles(tgt_smiles)}
+        )
+
+        if not non_matching:
+            continue
+
+        # Non matching set
+        selected_smiles = [tgt_smiles] + np.random.choice(sim_smiles, 4, replace=False)
+        nmr_input = tokenize_smiles(".".join(selected_smiles)) + nmr
+
+        src_tgt_pairs["{:.3f}".format(tanimoto_boxes[i])].append(
+            {"nmr_input": nmr_input, "smiles": DEFAULT_NON_MATCHING_TOKEN}
+        )
+
+    return src_tgt_pairs
+
+
+def tanimoto_set_worker(
+    worker_id: int,
+    smiles_chunks: list,
+    nmr_df: pd.DataFrame,
+    mode: str,
+    n_samples: int,
+    return_list: List,
+    status_list: List,
+    hnmr_mode: str = "range",
+    token_space: str = "shared",
+    non_matching=True,
+    tanimoto_bins: int = 5,
+) -> None:
+    container = TanimotoContainer(n_tanimoto_bins=tanimoto_bins)
+
+    for smiles in smiles_chunks:
+        tanimoto_dict = get_tanimoto_set(
+            smiles,
+            nmr_df,
+            mode,
+            hnmr_mode=hnmr_mode,
+            token_space=token_space,
+            non_matching=non_matching,
+            n_tanimoto_bins=tanimoto_bins,
+        )
+        container.add(tanimoto_dict)
+
+        status_list[worker_id] = len(container)
+        if len(container) > n_samples:
+            break
+
+    container_df = container.to_dataframe()
+    container_df["merged_input_output"] = (
+        container_df["nmr_input"] + container_df["smiles"]
+    )
+    container_df = container_df.drop_duplicates(subset="merged_input_output")
+    container_df.drop(columns="merged_input_output", inplace=True)
+
+    return_list.append(container_df)
