@@ -1,6 +1,6 @@
 # NMR to Structure
 
-This code accompanies the paper [Learning the Language of NMR: Structure Elucidation from NMR spectra using Transformer Models](). The repo contains scripts to simulate NMR spectra, prepare the data and train models.
+This code accompanies the paper [Learning the Language of NMR: Structure Elucidation from NMR spectra using Transformer Models](https://ibm.biz/nmr_to_struc). The repo contains scripts to simulate NMR spectra, prepare the data and train models.
 
 
 ## Installation guide
